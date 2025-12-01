@@ -208,24 +208,45 @@ if prompt := st.chat_input("검색할 키워드를 입력하거나 질문해주�
     with st.chat_message("assistant"):
         prompt_lower = prompt.lower()
         
-        # 1. 기사 요약 요청 감지
+        # 1. 특정 번호 기사 요약 요청 감지 (예: "1번 기사 요약해줘")
         if any(word in prompt_lower for word in ['요약', '요약해', '정리', '정리해']):
             if not st.session_state.recent_news:
                 assistant_reply = "먼저 뉴스를 검색해주세요. 예: '삼성' 또는 'AI 반도체'"
             elif not ai_available:
                 assistant_reply = "AI 요약 기능을 사용하려면 Azure OpenAI 설정이 필요합니다."
             else:
-                with st.spinner("기사를 요약하는 중입니다..."):
-                    summaries = []
-                    for news in st.session_state.recent_news:
-                        article_content = get_article_content(news['link'])
-                        if article_content:
-                            summary = summarize_article_with_ai(article_content)
-                            summaries.append(f"**{news['rank']}. {news['title']}**\n{summary}\n")
-                        else:
-                            summaries.append(f"**{news['rank']}. {news['title']}**\n(본문을 가져올 수 없습니다)\n")
-                    
-                    assistant_reply = "📝 **기사 요약**\n\n" + "\n".join(summaries)
+                # 특정 번호 추출 (1번, 2번, 3번 등)
+                import re
+                number_match = re.search(r'(\d+)\s*번', prompt)
+                
+                if number_match:
+                    # 특정 번호 기사만 요약
+                    article_num = int(number_match.group(1))
+                    if 1 <= article_num <= len(st.session_state.recent_news):
+                        with st.spinner(f"{article_num}번 기사를 요약하는 중입니다..."):
+                            news = st.session_state.recent_news[article_num - 1]
+                            article_content = get_article_content(news['link'])
+                            
+                            if article_content:
+                                summary = summarize_article_with_ai(article_content)
+                                assistant_reply = f"📝 **{article_num}번 기사 요약**\n\n**{news['title']}**\n\n{summary}"
+                            else:
+                                assistant_reply = f"{article_num}번 기사의 본문을 가져올 수 없습니다. 링크를 직접 확인해주세요: {news['link']}"
+                    else:
+                        assistant_reply = f"{article_num}번 기사가 없습니다. 1~{len(st.session_state.recent_news)}번 중에서 선택해주세요."
+                else:
+                    # 번호 지정 없으면 전체 요약
+                    with st.spinner("모든 기사를 요약하는 중입니다..."):
+                        summaries = []
+                        for news in st.session_state.recent_news:
+                            article_content = get_article_content(news['link'])
+                            if article_content:
+                                summary = summarize_article_with_ai(article_content)
+                                summaries.append(f"**{news['rank']}. {news['title']}**\n{summary}\n")
+                            else:
+                                summaries.append(f"**{news['rank']}. {news['title']}**\n(본문을 가져올 수 없습니다)\n")
+                        
+                        assistant_reply = "📝 **전체 기사 요약**\n\n" + "\n".join(summaries)
         
         # 2. 관련 기사 검색 요청 감지
         elif '관련' in prompt_lower and ('기사' in prompt_lower or '뉴스' in prompt_lower):
@@ -274,7 +295,8 @@ if prompt := st.chat_input("검색할 키워드를 입력하거나 질문해주�
                 
                 if ai_available:
                     reply_lines.append("\n💡 **이렇게 물어보세요:**")
-                    reply_lines.append("- '이 기사 요약해줘'")
+                    reply_lines.append("- '1번 기사 요약해줘' (특정 기사)")
+                    reply_lines.append("- '이 기사들 요약해줘' (전체)")
                     reply_lines.append("- 'AI랑 관련된 기사가 있어?'")
                 
                 assistant_reply = "\n".join(reply_lines)
