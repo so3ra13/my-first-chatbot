@@ -30,10 +30,13 @@ def get_naver_popular_news(keyword):
 
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 여러 선택자 패턴 시도
-        news_items = soup.select('ul.list_news > li.bx') or \
-                     soup.select('div.news_area') or \
-                     soup.select('.list_news li')
+        # 스크린샷에서 확인된 구조: div.sds-comps-vertical-layout 내부의 항목들
+        news_items = soup.select('div.sds-comps-vertical-layout.sds-comps-full-layout')
+        
+        if not news_items:
+            # 대체 선택자
+            news_items = soup.select('div.sds-comps-base-layout') or \
+                        soup.select('ul.list_news > li.bx')
         
         if not news_items:
             return []
@@ -45,34 +48,35 @@ def get_naver_popular_news(keyword):
                 break
             
             try:
-                # 제목과 링크 추출
-                title_tag = item.select_one('a.news_tit') or \
-                           item.select_one('a.dsc_txt_wrap') or \
-                           item.select_one('.news_tit')
-                
-                if not title_tag:
+                # 스크린샷 구조에 맞춘 선택자
+                # 1. 링크 추출: a 태그에서 href 속성
+                link_tag = item.select_one('a[href*="naver.com"]')
+                if not link_tag:
                     continue
                 
-                # 링크 추출
-                link = title_tag.get('href', '')
+                link = link_tag.get('href', '')
                 if not link:
                     continue
                 
-                # 제목 추출 (여러 방법 시도)
-                title_span = title_tag.select_one('span.news_tit')
-                if title_span:
-                    title = title_span.get_text(strip=True)
-                else:
-                    title = title_tag.get_text(strip=True)
+                # 2. 제목 추출: span.sds-comps-text 내부의 텍스트
+                title_tag = item.select_one('span.sds-comps-text.sds-comps-text-ellipsis')
+                if not title_tag:
+                    title_tag = item.select_one('span.sds-comps-text')
                 
-                # 언론사 추출
+                if title_tag:
+                    title = title_tag.get_text(strip=True)
+                else:
+                    # a 태그의 텍스트 사용
+                    title = link_tag.get_text(strip=True)
+                
+                # 3. 언론사 추출
                 source_tag = item.select_one('a.info.press') or \
-                           item.select_one('.press') or \
-                           item.select_one('a.info')
+                           item.select_one('a.info') or \
+                           item.select_one('div.sds-comps-profile span')
                 
                 source = source_tag.get_text(strip=True) if source_tag else "출처 불명"
                 
-                if title and link:
+                if title and link and len(title) > 5:  # 제목이 너무 짧으면 제외
                     top_3_news.append({
                         "rank": len(top_3_news) + 1,
                         "title": title,
